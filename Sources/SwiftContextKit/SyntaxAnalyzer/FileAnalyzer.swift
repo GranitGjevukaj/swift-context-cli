@@ -122,6 +122,7 @@ private final class AnalyzerVisitor: SyntaxVisitor {
         let additionalConformances = conformances(from: node.inheritanceClause)
         let extensionProperties = properties(from: node.memberBlock)
         let extensionMethods = methods(from: node.memberBlock)
+        let extensionSignals = navigationSignals(from: node.memberBlock)
 
         var mergedConformances = existing.conformances
         for conformance in additionalConformances where !mergedConformances.contains(conformance) {
@@ -138,6 +139,11 @@ private final class AnalyzerVisitor: SyntaxVisitor {
             mergedMethods.append(method)
         }
 
+        var mergedSignals = existing.navigationSignals
+        for signal in extensionSignals where !mergedSignals.contains(signal) {
+            mergedSignals.append(signal)
+        }
+
         types[index] = TypeInfo(
             name: existing.name,
             kind: existing.kind,
@@ -145,6 +151,7 @@ private final class AnalyzerVisitor: SyntaxVisitor {
             conformances: mergedConformances,
             properties: mergedProperties,
             methods: mergedMethods,
+            navigationSignals: mergedSignals,
             filePath: existing.filePath
         )
         return .skipChildren
@@ -164,6 +171,7 @@ private final class AnalyzerVisitor: SyntaxVisitor {
             conformances: conformances(from: inheritanceClause),
             properties: properties(from: memberBlock),
             methods: methods(from: memberBlock),
+            navigationSignals: navigationSignals(from: memberBlock),
             filePath: filePath
         )
     }
@@ -341,6 +349,16 @@ private final class AnalyzerVisitor: SyntaxVisitor {
         let noGeneric = description.split(separator: "<", maxSplits: 1).first.map(String.init) ?? description
         let stripped = noGeneric.trimmingCharacters(in: .whitespacesAndNewlines)
         return stripped.split(separator: ".").last.map(String.init) ?? stripped
+    }
+
+    private func navigationSignals(from memberBlock: MemberBlockSyntax) -> [String] {
+        let text = memberBlock.trimmedDescription
+        var signals: [String] = []
+        if text.contains("NavigationStack") { signals.append("NavigationStack") }
+        if text.contains("NavigationPath") { signals.append("NavigationPath") }
+        if text.contains(".sheet(") || text.contains(".sheet ") { signals.append("sheet") }
+        if text.contains("fullScreenCover") { signals.append("fullScreenCover") }
+        return signals
     }
 
     private func contains(property: PropertyInfo, in properties: [PropertyInfo]) -> Bool {

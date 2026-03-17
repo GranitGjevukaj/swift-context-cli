@@ -27,11 +27,22 @@ public struct ContextManifest: Codable, Sendable {
     public let project: ProjectOverview
     public let modules: [ModuleInfo]
     public let viewBindings: [ViewBinding]
+    public let navigationGraph: NavigationGraph
+    public let dependencyGraph: DependencyGraph
 
-    public init(version: String, project: ProjectOverview, modules: [ModuleInfo], viewBindings: [ViewBinding] = []) {
+    public init(
+        version: String,
+        project: ProjectOverview,
+        modules: [ModuleInfo],
+        viewBindings: [ViewBinding] = [],
+        navigationGraph: NavigationGraph = .empty,
+        dependencyGraph: DependencyGraph = .empty
+    ) {
         self.version = version
         self.project = project
         self.modules = modules
         self.viewBindings = viewBindings
+        self.navigationGraph = navigationGraph
+        self.dependencyGraph = dependencyGraph
     }
 }

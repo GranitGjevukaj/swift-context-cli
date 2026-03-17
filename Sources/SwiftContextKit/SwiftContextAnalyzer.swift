@@ -6,6 +6,17 @@ public enum OutputFormat: String, Sendable {
     case both
 }
 
+public enum GraphType: String, Sendable {
+    case navigation
+    case dependency
+    case binding
+}
+
+public enum GraphFormat: String, Sendable {
+    case json
+    case mermaid
+}
+
 public struct AnalyzeOptions: Sendable {
     public let projectPath: String?
     public let outputPath: String?
@@ -40,40 +51,7 @@ public struct SwiftContextAnalyzer: Sendable {
     public init() {}
 
     public func analyze(options: AnalyzeOptions) throws -> AnalyzeResult {
-        let project = try ProjectLocator.resolve(from: options.projectPath)
-
-        let modules: [ModuleInfo] = try project.targets.map { target in
-            var collectedImports: Set<String> = []
-            var collectedTypes: [TypeInfo] = []
-
-            for sourceFile in target.sourceFiles {
-                let fileAnalysis = try FileAnalyzer.analyze(fileAt: sourceFile)
-                collectedImports.formUnion(fileAnalysis.imports)
-                collectedTypes.append(contentsOf: fileAnalysis.types)
-            }
-
-            return ModuleInfo(
-                name: target.name,
-                sourceFileCount: target.sourceFiles.count,
-                imports: collectedImports.sorted(),
-                types: collectedTypes
-            )
-        }
-
-        let viewBindings = ViewBindingGraphBuilder.build(modules: modules)
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        let manifest = ContextManifest(
-            version: "0.2.0",
-            project: ProjectOverview(
-                name: project.name,
-                kind: project.kind.rawValue,
-                rootPath: project.rootPath,
-                minimumDeploymentTarget: project.minimumDeploymentTarget,
-                generatedAt: timestamp
-            ),
-            modules: modules,
-            viewBindings: viewBindings
-        )
+        let manifest = try buildManifest(projectPath: options.projectPath)
 
         let outputDirectory = URL(fileURLWithPath: options.outputPath ?? FileManager.default.currentDirectoryPath)
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
@@ -103,5 +81,78 @@ public struct SwiftContextAnalyzer: Sendable {
         }
 
         return AnalyzeResult(manifest: manifest, artifacts: artifacts)
+    }
+
+    public func graph(projectPath: String?, type: GraphType, format: GraphFormat) throws -> String {
+        let manifest = try buildManifest(projectPath: projectPath)
+
+        switch (type, format) {
+        case (.navigation, .json):
+            return try encodeJSON(manifest.navigationGraph)
+        case (.navigation, .mermaid):
+            return MermaidEmitter.emitNavigation(graph: manifest.navigationGraph)
+
+        case (.dependency, .json):
+            return try encodeJSON(manifest.dependencyGraph)
+        case (.dependency, .mermaid):
+            return MermaidEmitter.emitDependency(graph: manifest.dependencyGraph)
+
+        case (.binding, .json):
+            return try encodeJSON(manifest.viewBindings)
+        case (.binding, .mermaid):
+            return MermaidEmitter.emitBindings(bindings: manifest.viewBindings)
+        }
+    }
+
+    public func buildManifest(projectPath: String?) throws -> ContextManifest {
+        let project = try ProjectLocator.resolve(from: projectPath)
+
+        let modules: [ModuleInfo] = try project.targets.map { target in
+            var collectedImports: Set<String> = []
+            var collectedTypes: [TypeInfo] = []
+
+            for sourceFile in target.sourceFiles {
+                let fileAnalysis = try FileAnalyzer.analyze(fileAt: sourceFile)
+                collectedImports.formUnion(fileAnalysis.imports)
+                collectedTypes.append(contentsOf: fileAnalysis.types)
+            }
+
+            return ModuleInfo(
+                name: target.name,
+                sourceFileCount: target.sourceFiles.count,
+                imports: collectedImports.sorted(),
+                types: collectedTypes
+            )
+        }
+
+        let viewBindings = ViewBindingGraphBuilder.build(modules: modules)
+        let navigationGraph = NavigationGraphBuilder.build(modules: modules)
+        let dependencyGraph = DependencyGraphBuilder.build(modules: modules)
+
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        return ContextManifest(
+            version: "0.3.0",
+            project: ProjectOverview(
+                name: project.name,
+                kind: project.kind.rawValue,
+                rootPath: project.rootPath,
+                minimumDeploymentTarget: project.minimumDeploymentTarget,
+                generatedAt: timestamp
+            ),
+            modules: modules,
+            viewBindings: viewBindings,
+            navigationGraph: navigationGraph,
+            dependencyGraph: dependencyGraph
+        )
+    }
+
+    private func encodeJSON<T: Encodable>(_ value: T) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(value)
+        guard let output = String(data: data, encoding: .utf8) else {
+            throw SwiftContextError.jsonEncodingFailed
+        }
+        return output + "\n"
     }
 }

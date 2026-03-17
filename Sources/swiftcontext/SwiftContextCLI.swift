@@ -7,7 +7,7 @@ struct SwiftContextCLI: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "swiftcontext",
         abstract: "Generate AI agent context from Swift projects",
-        version: "0.1.0",
+        version: "0.3.0",
         subcommands: [Analyze.self, Graph.self, Preview.self, Export.self],
         defaultSubcommand: Analyze.self
     )
@@ -45,8 +45,22 @@ struct Analyze: ParsableCommand {
 struct Graph: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Generate project graph output")
 
+    @Option(name: .long, help: "Path to .xcodeproj or Package.swift directory")
+    var project: String?
+
+    @Option(name: .long, help: "Graph type: navigation, dependency, binding")
+    var type: GraphTypeOption = .navigation
+
+    @Option(name: .long, help: "Output format: json, mermaid")
+    var format: GraphFormatOption = .json
+
     func run() throws {
-        throw ValidationError("The 'graph' subcommand is not implemented yet.")
+        let output = try SwiftContextAnalyzer().graph(
+            projectPath: project,
+            type: type.asGraphType,
+            format: format.asGraphFormat
+        )
+        print(output, terminator: "")
     }
 }
 
@@ -83,6 +97,37 @@ enum OutputFormatOption: String, CaseIterable, ExpressibleByArgument {
             return .markdown
         case .both:
             return .both
+        }
+    }
+}
+
+enum GraphTypeOption: String, CaseIterable, ExpressibleByArgument {
+    case navigation
+    case dependency
+    case binding
+
+    var asGraphType: GraphType {
+        switch self {
+        case .navigation:
+            return .navigation
+        case .dependency:
+            return .dependency
+        case .binding:
+            return .binding
+        }
+    }
+}
+
+enum GraphFormatOption: String, CaseIterable, ExpressibleByArgument {
+    case json
+    case mermaid
+
+    var asGraphFormat: GraphFormat {
+        switch self {
+        case .json:
+            return .json
+        case .mermaid:
+            return .mermaid
         }
     }
 }

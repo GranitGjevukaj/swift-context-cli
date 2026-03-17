@@ -15,6 +15,7 @@ public struct TypeInfo: Codable, Sendable {
     public let conformances: [String]
     public let properties: [PropertyInfo]
     public let methods: [MethodInfo]
+    public let navigationSignals: [String]
     public let filePath: String
 
     public init(
@@ -24,6 +25,7 @@ public struct TypeInfo: Codable, Sendable {
         conformances: [String],
         properties: [PropertyInfo] = [],
         methods: [MethodInfo] = [],
+        navigationSignals: [String] = [],
         filePath: String
     ) {
         self.name = name
@@ -32,6 +34,7 @@ public struct TypeInfo: Codable, Sendable {
         self.conformances = conformances
         self.properties = properties
         self.methods = methods
+        self.navigationSignals = navigationSignals
         self.filePath = filePath
     }
 }

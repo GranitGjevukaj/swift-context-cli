@@ -60,6 +60,33 @@ public enum MarkdownEmitter {
             }
         }
 
+        lines.append("")
+        lines.append("## Navigation Graph")
+        if manifest.navigationGraph.coordinators.isEmpty, manifest.navigationGraph.viewSurfaces.isEmpty {
+            lines.append("No navigation graph data detected.")
+        } else {
+            for coordinator in manifest.navigationGraph.coordinators {
+                if coordinator.childCoordinators.isEmpty {
+                    lines.append("- [\(coordinator.module)] \(coordinator.name)")
+                } else {
+                    lines.append("- [\(coordinator.module)] \(coordinator.name) → \(coordinator.childCoordinators.joined(separator: ", "))")
+                }
+            }
+            for surface in manifest.navigationGraph.viewSurfaces {
+                lines.append("- [\(surface.module)] \(surface.viewType) uses \(surface.apis.joined(separator: ", "))")
+            }
+        }
+
+        lines.append("")
+        lines.append("## Dependency Graph")
+        if manifest.dependencyGraph.edges.isEmpty {
+            lines.append("No protocol-to-concrete mappings detected.")
+        } else {
+            for edge in manifest.dependencyGraph.edges {
+                lines.append("- [\(edge.module)] \(edge.protocolType) → \(edge.concreteType)")
+            }
+        }
+
         return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
     }
 
