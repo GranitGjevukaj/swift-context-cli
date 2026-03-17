@@ -6,7 +6,7 @@ public enum ProjectLocator {
             .standardizedFileURL
 
         if let xcodeproj = try firstFile(endingWith: ".xcodeproj", in: root) {
-            return XcodeProjectParser.parse(projectFile: xcodeproj)
+            return try XcodeProjectParser.parse(projectFile: xcodeproj)
         }
 
         let packageSwift = root.appendingPathComponent("Package.swift")
