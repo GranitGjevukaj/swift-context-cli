@@ -9,7 +9,15 @@ public enum SPMManifestParser {
         let testsURL = projectRoot.appendingPathComponent("Tests")
 
         var targets: [ProjectTarget] = []
-        if let moduleNames = try? FileManager.default.contentsOfDirectory(atPath: sourcesURL.path) {
+
+        if FileManager.default.fileExists(atPath: sourcesURL.path) {
+            let moduleNames: [String]
+            do {
+                moduleNames = try FileManager.default.contentsOfDirectory(atPath: sourcesURL.path)
+            } catch {
+                throw SwiftContextError.directoryListingFailed(path: sourcesURL.path, underlying: error)
+            }
+
             for moduleName in moduleNames.sorted() {
                 let moduleURL = sourcesURL.appendingPathComponent(moduleName)
                 var isDirectory: ObjCBool = false
@@ -21,7 +29,14 @@ public enum SPMManifestParser {
             }
         }
 
-        if let testNames = try? FileManager.default.contentsOfDirectory(atPath: testsURL.path) {
+        if FileManager.default.fileExists(atPath: testsURL.path) {
+            let testNames: [String]
+            do {
+                testNames = try FileManager.default.contentsOfDirectory(atPath: testsURL.path)
+            } catch {
+                throw SwiftContextError.directoryListingFailed(path: testsURL.path, underlying: error)
+            }
+
             for testName in testNames.sorted() {
                 let testURL = testsURL.appendingPathComponent(testName)
                 var isDirectory: ObjCBool = false

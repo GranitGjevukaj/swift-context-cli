@@ -26,11 +26,18 @@ public struct AnalyzeOptions: Sendable {
     public let projectPath: String?
     public let outputPath: String?
     public let format: OutputFormat
+    public let runtime: RuntimeOptions
 
-    public init(projectPath: String?, outputPath: String?, format: OutputFormat) {
+    public init(
+        projectPath: String?,
+        outputPath: String?,
+        format: OutputFormat,
+        runtime: RuntimeOptions = .default
+    ) {
         self.projectPath = projectPath
         self.outputPath = outputPath
         self.format = format
+        self.runtime = runtime
     }
 }
 
@@ -56,40 +63,53 @@ public struct SwiftContextAnalyzer: Sendable {
     public init() {}
 
     public func analyze(options: AnalyzeOptions) throws -> AnalyzeResult {
-        let manifest = try buildManifest(projectPath: options.projectPath)
+        let diagnostics = makeDiagnostics(runtime: options.runtime)
+        let manifest = try buildManifest(projectPath: options.projectPath, runtime: options.runtime)
 
         let outputDirectory = URL(fileURLWithPath: options.outputPath ?? FileManager.default.currentDirectoryPath)
-        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        } catch {
+            throw SwiftContextError.outputWriteFailed(path: outputDirectory.path, underlying: error)
+        }
 
         var artifacts: [GeneratedArtifact] = []
         switch options.format {
         case .markdown:
             let markdown = MarkdownEmitter.emit(manifest: manifest)
             let path = outputDirectory.appendingPathComponent("AGENTS.md")
-            try markdown.write(to: path, atomically: true, encoding: .utf8)
+            try writeOutput(markdown, to: path)
             artifacts.append(GeneratedArtifact(path: path.path))
+
         case .json:
             let json = try JSONEmitter.emit(manifest: manifest)
             let path = outputDirectory.appendingPathComponent(".swiftcontext.json")
-            try json.write(to: path, atomically: true, encoding: .utf8)
+            try writeOutput(json, to: path)
             artifacts.append(GeneratedArtifact(path: path.path))
+
         case .both:
             let markdown = MarkdownEmitter.emit(manifest: manifest)
             let markdownPath = outputDirectory.appendingPathComponent("AGENTS.md")
-            try markdown.write(to: markdownPath, atomically: true, encoding: .utf8)
+            try writeOutput(markdown, to: markdownPath)
             artifacts.append(GeneratedArtifact(path: markdownPath.path))
 
             let json = try JSONEmitter.emit(manifest: manifest)
             let jsonPath = outputDirectory.appendingPathComponent(".swiftcontext.json")
-            try json.write(to: jsonPath, atomically: true, encoding: .utf8)
+            try writeOutput(json, to: jsonPath)
             artifacts.append(GeneratedArtifact(path: jsonPath.path))
         }
 
+        diagnostics.verbose("Generated \(artifacts.count) artifact(s) in \(outputDirectory.path).")
         return AnalyzeResult(manifest: manifest, artifacts: artifacts)
     }
 
-    public func graph(projectPath: String?, type: GraphType, format: GraphFormat) throws -> String {
-        let manifest = try buildManifest(projectPath: projectPath)
+    public func graph(
+        projectPath: String?,
+        type: GraphType,
+        format: GraphFormat,
+        runtime: RuntimeOptions = .default
+    ) throws -> String {
+        let manifest = try buildManifest(projectPath: projectPath, runtime: runtime)
 
         switch (type, format) {
         case (.navigation, .json):
@@ -109,8 +129,13 @@ public struct SwiftContextAnalyzer: Sendable {
         }
     }
 
-    public func preview(projectPath: String?, moduleName: String, format: PreviewFormat) throws -> String {
-        let manifest = try buildManifest(projectPath: projectPath)
+    public func preview(
+        projectPath: String?,
+        moduleName: String,
+        format: PreviewFormat,
+        runtime: RuntimeOptions = .default
+    ) throws -> String {
+        let manifest = try buildManifest(projectPath: projectPath, runtime: runtime)
         guard let module = manifest.modules.first(where: { $0.name == moduleName }) else {
             throw SwiftContextError.moduleNotFound(name: moduleName)
         }
@@ -142,25 +167,52 @@ public struct SwiftContextAnalyzer: Sendable {
         }
     }
 
-    public func export(projectPath: String?, format: ExportFormat) throws -> String {
-        let manifest = try buildManifest(projectPath: projectPath)
+    public func export(
+        projectPath: String?,
+        format: ExportFormat,
+        runtime: RuntimeOptions = .default
+    ) throws -> String {
+        let manifest = try buildManifest(projectPath: projectPath, runtime: runtime)
         return ExportEmitter.emit(manifest: manifest, format: format)
     }
 
-    public func buildManifest(projectPath: String?) throws -> ContextManifest {
+    public func buildManifest(projectPath: String?, runtime: RuntimeOptions = .default) throws -> ContextManifest {
+        let diagnostics = makeDiagnostics(runtime: runtime)
+        diagnostics.verbose("Resolving project path...")
+
         let project = try ProjectLocator.resolve(from: projectPath)
+        diagnostics.verbose("Analyzing project '\(project.name)' (\(project.kind.rawValue)).")
+
+        let resolvedConfig = try SwiftContextConfigLoader.load(
+            projectRoot: project.rootPath,
+            explicitPath: runtime.configPath
+        )
+
+        if let configPath = resolvedConfig.path {
+            diagnostics.verbose("Using config file: \(configPath)")
+        } else {
+            diagnostics.verbose("No .swiftcontext.yml found; using defaults.")
+        }
+
         let targetSourceFilesByModule = Dictionary(
             uniqueKeysWithValues: project.targets.map { ($0.name, $0.sourceFiles) }
         )
 
+        let configuredParallelism = resolvedConfig.config.analysis.parallelism
+            ?? ProcessInfo.processInfo.activeProcessorCount
+
         let modules: [ModuleInfo] = try project.targets.map { target in
+            diagnostics.verbose("Analyzing target '\(target.name)' with \(target.sourceFiles.count) source file(s).")
+            let analyses = try analyzeSourceFiles(
+                target.sourceFiles,
+                parallelism: max(1, configuredParallelism)
+            )
+
             var collectedImports: Set<String> = []
             var collectedTypes: [TypeInfo] = []
-
-            for sourceFile in target.sourceFiles {
-                let fileAnalysis = try FileAnalyzer.analyze(fileAt: sourceFile)
-                collectedImports.formUnion(fileAnalysis.imports)
-                collectedTypes.append(contentsOf: fileAnalysis.types)
+            for analysis in analyses {
+                collectedImports.formUnion(analysis.imports)
+                collectedTypes.append(contentsOf: analysis.types)
             }
 
             return ModuleInfo(
@@ -179,7 +231,10 @@ public struct SwiftContextAnalyzer: Sendable {
             viewBindings: viewBindings,
             navigationGraph: navigationGraph
         )
-        let conventions = ConventionInferenceEngine.infer(modules: modules)
+        let conventions = ConventionInferenceEngine.infer(
+            modules: modules,
+            config: resolvedConfig.config
+        )
         let testCoverage = TestCoverageAnalyzer.analyze(
             targetSourceFilesByModule: targetSourceFilesByModule,
             modules: modules
@@ -187,7 +242,7 @@ public struct SwiftContextAnalyzer: Sendable {
 
         let timestamp = ISO8601DateFormatter().string(from: Date())
         return ContextManifest(
-            version: "0.4.0",
+            version: "0.5.0",
             project: ProjectOverview(
                 name: project.name,
                 kind: project.kind.rawValue,
@@ -203,6 +258,71 @@ public struct SwiftContextAnalyzer: Sendable {
             conventions: conventions,
             testCoverage: testCoverage
         )
+    }
+
+    private func analyzeSourceFiles(_ sourceFiles: [String], parallelism: Int) throws -> [FileAnalysis] {
+        let orderedFiles = sourceFiles.sorted()
+        guard !orderedFiles.isEmpty else {
+            return []
+        }
+
+        if orderedFiles.count == 1 || parallelism <= 1 {
+            return try orderedFiles.map { path in
+                do {
+                    return try FileAnalyzer.analyze(fileAt: path)
+                } catch {
+                    throw SwiftContextError.fileAnalysisFailed(path: path, underlying: error)
+                }
+            }
+        }
+
+        let state = ParallelAnalysisState(count: orderedFiles.count)
+        let queue = OperationQueue()
+        queue.qualityOfService = .userInitiated
+        queue.maxConcurrentOperationCount = min(parallelism, orderedFiles.count)
+
+        for (index, path) in orderedFiles.enumerated() {
+            queue.addOperation {
+                if state.hasFailure {
+                    return
+                }
+
+                do {
+                    let analysis = try FileAnalyzer.analyze(fileAt: path)
+                    state.store(analysis: analysis, at: index)
+                } catch {
+                    state.store(error: SwiftContextError.fileAnalysisFailed(path: path, underlying: error))
+                    queue.cancelAllOperations()
+                }
+            }
+        }
+
+        queue.waitUntilAllOperationsAreFinished()
+
+        if let failure = state.failure {
+            throw failure
+        }
+
+        return state.compactedResults()
+    }
+
+    private func makeDiagnostics(runtime: RuntimeOptions) -> Diagnostics {
+        guard runtime.logLevel != .quiet else {
+            return .silent
+        }
+
+        return Diagnostics(level: runtime.logLevel) { message in
+            let line = "[swiftcontext] \(message)\n"
+            FileHandle.standardError.write(Data(line.utf8))
+        }
+    }
+
+    private func writeOutput(_ content: String, to url: URL) throws {
+        do {
+            try content.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            throw SwiftContextError.outputWriteFailed(path: url.path, underlying: error)
+        }
     }
 
     private func encodeJSON<T: Encodable>(_ value: T) throws -> String {
@@ -292,4 +412,46 @@ private struct ModulePreview: Codable {
     let viewSurfaces: [ViewNavigationSurface]
     let dependencies: [DependencyEdge]
     let coverage: ModuleTestCoverage?
+}
+
+private final class ParallelAnalysisState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var results: [FileAnalysis?]
+    private var firstError: Error?
+
+    init(count: Int) {
+        self.results = Array(repeating: nil, count: count)
+    }
+
+    var hasFailure: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return firstError != nil
+    }
+
+    var failure: Error? {
+        lock.lock()
+        defer { lock.unlock() }
+        return firstError
+    }
+
+    func store(analysis: FileAnalysis, at index: Int) {
+        lock.lock()
+        results[index] = analysis
+        lock.unlock()
+    }
+
+    func store(error: Error) {
+        lock.lock()
+        if firstError == nil {
+            firstError = error
+        }
+        lock.unlock()
+    }
+
+    func compactedResults() -> [FileAnalysis] {
+        lock.lock()
+        defer { lock.unlock() }
+        return results.compactMap { $0 }
+    }
 }

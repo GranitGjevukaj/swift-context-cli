@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-binaries:
+    name: Build Binary (${{ matrix.arch }})
+    runs-on: ${{ matrix.macos }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - macos: macos-14
+            arch: arm64
+          - macos: macos-13
+            arch: x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build release binary
+        run: swift build -c release --product swiftcontext
+
+      - name: Stage binary
+        run: |
+          mkdir -p dist
+          cp .build/release/swiftcontext dist/swiftcontext-${{ matrix.arch }}
+          chmod +x dist/swiftcontext-${{ matrix.arch }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: swiftcontext-${{ matrix.arch }}
+          path: dist/swiftcontext-${{ matrix.arch }}
+
+  release:
+    name: Publish Release
+    runs-on: macos-14
+    needs: build-binaries
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download built binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create universal binary and archive
+        id: package
+        run: |
+          chmod +x dist/swiftcontext-arm64/swiftcontext-arm64
+          chmod +x dist/swiftcontext-x86_64/swiftcontext-x86_64
+
+          lipo -create \
+            dist/swiftcontext-arm64/swiftcontext-arm64 \
+            dist/swiftcontext-x86_64/swiftcontext-x86_64 \
+            -output dist/swiftcontext
+
+          tar -czf dist/swiftcontext-macos-universal.tar.gz -C dist swiftcontext
+
+          SHA256=$(shasum -a 256 dist/swiftcontext-macos-universal.tar.gz | awk '{print $1}')
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/swiftcontext-macos-universal.tar.gz
+
+      - name: Update Homebrew formula on main
+        run: |
+          git fetch origin main
+          git checkout main
+          ./scripts/update_homebrew_formula.sh \
+            "${{ steps.package.outputs.version }}" \
+            "${{ steps.package.outputs.sha256 }}" \
+            "$GITHUB_REPOSITORY"
+
+          if git diff --quiet -- Formula/swiftcontext.rb; then
+            echo "Formula is already up to date"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/swiftcontext.rb
+          git commit -m "chore(homebrew): update formula for v${{ steps.package.outputs.version }}"
+          git push origin main

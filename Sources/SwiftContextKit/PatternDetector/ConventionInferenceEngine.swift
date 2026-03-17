@@ -1,14 +1,23 @@
 import Foundation
 
 public enum ConventionInferenceEngine {
-    public static func infer(modules: [ModuleInfo]) -> [ModuleConvention] {
+    public static func infer(modules: [ModuleInfo], config: SwiftContextConfig = .default) -> [ModuleConvention] {
         modules.map { module in
             let names = module.types.map(\.name)
 
-            let viewModelSuffix = dominantSuffix(in: names, candidates: ["ViewModel", "VM"])
-            let coordinatorSuffix = dominantSuffix(in: names, candidates: ["Coordinator"])
-            let testSuffix = dominantSuffix(in: names, candidates: ["Tests", "Test"])
-            let mockPrefix = dominantPrefix(in: names, candidates: ["Mock"])
+            let inferredNaming = NamingConventions(
+                viewModelSuffix: dominantSuffix(in: names, candidates: ["ViewModel", "VM"]),
+                coordinatorSuffix: dominantSuffix(in: names, candidates: ["Coordinator"]),
+                testSuffix: dominantSuffix(in: names, candidates: ["Tests", "Test"]),
+                mockPrefix: dominantPrefix(in: names, candidates: ["Mock"])
+            )
+
+            let moduleOverride = config.moduleOverrides[module.name]
+            let naming = applyOverrides(
+                inferred: inferredNaming,
+                global: config.conventions,
+                module: moduleOverride
+            )
 
             var hints: [String] = []
             if hasFeatureFolders(module) {
@@ -23,15 +32,23 @@ public enum ConventionInferenceEngine {
 
             return ModuleConvention(
                 module: module.name,
-                naming: NamingConventions(
-                    viewModelSuffix: viewModelSuffix,
-                    coordinatorSuffix: coordinatorSuffix,
-                    testSuffix: testSuffix,
-                    mockPrefix: mockPrefix
-                ),
+                naming: naming,
                 fileOrganizationHints: hints.sorted()
             )
         }
+    }
+
+    private static func applyOverrides(
+        inferred: NamingConventions,
+        global: NamingConventionOverrides,
+        module: NamingConventionOverrides?
+    ) -> NamingConventions {
+        NamingConventions(
+            viewModelSuffix: module?.viewModelSuffix ?? global.viewModelSuffix ?? inferred.viewModelSuffix,
+            coordinatorSuffix: module?.coordinatorSuffix ?? global.coordinatorSuffix ?? inferred.coordinatorSuffix,
+            testSuffix: module?.testSuffix ?? global.testSuffix ?? inferred.testSuffix,
+            mockPrefix: module?.mockPrefix ?? global.mockPrefix ?? inferred.mockPrefix
+        )
     }
 
     private static func dominantSuffix(in names: [String], candidates: [String]) -> String? {

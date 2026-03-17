@@ -9,7 +9,7 @@ Running analysis produces two artifacts at your chosen output path:
 - `AGENTS.md` (human-readable, agent-friendly project context)
 - `.swiftcontext.json` (machine-readable manifest)
 
-## Current Capabilities (v0.4)
+## Current Capabilities (v0.5)
 
 - Project parsing:
   - Xcode projects (`.xcodeproj`) via `XcodeProj`
@@ -26,14 +26,67 @@ Running analysis produces two artifacts at your chosen output path:
   - MVVM, MVVM-C, TCA signals
   - Naming conventions and file organization hints
   - Test coverage surface (tested vs untested type detection)
-- Export and tooling commands:
-  - `analyze`, `graph`, `preview`, `export`
+- v0.5 polish:
+  - Parallel file analysis for large projects
+  - Config file support via `.swiftcontext.yml` (global conventions + per-module overrides + analysis parallelism)
+  - User-friendly diagnostics and typed error paths
+  - Global `--verbose` and `--quiet` flags
+- Tooling and distribution:
+  - CLI subcommands: `analyze`, `graph`, `preview`, `export`
+  - Homebrew formula in `Formula/swiftcontext.rb`
+  - macOS CI workflow (`.github/workflows/swift.yml`)
+  - Release automation (`.github/workflows/release.yml`) for universal binary + GitHub release + formula update
+
+## Install
+
+### Build from source
+
+```bash
+swift build -c release
+```
+
+### Homebrew (formula in this repo)
+
+```bash
+brew install --formula https://raw.githubusercontent.com/granitgjevukaj/swift-context-cli/main/Formula/swiftcontext.rb
+```
 
 ## Build
 
 ```bash
 swift build
 ```
+
+## Global Flags
+
+All subcommands support:
+
+- `--verbose`: print diagnostics and analysis progress
+- `--quiet`: suppress non-error output
+- `--config <path>`: load config from a custom `.swiftcontext.yml`
+
+## Config File (`.swiftcontext.yml`)
+
+Example:
+
+```yaml
+conventions:
+  viewModelSuffix: ViewModel
+  coordinatorSuffix: Coordinator
+  testSuffix: Tests
+  mockPrefix: Mock
+
+analysis:
+  parallelism: auto # or a positive integer (e.g. 8)
+
+moduleOverrides:
+  AppCore:
+    viewModelSuffix: VM
+```
+
+Notes:
+- If `--config` is not provided, `swiftcontext` looks for `.swiftcontext.yml` at the detected project root.
+- Supported top-level sections are `conventions`, `moduleOverrides` (alias: `overrides`), and `analysis`.
 
 ## Commands
 
@@ -44,6 +97,7 @@ Generate `AGENTS.md` and/or `.swiftcontext.json`.
 ```bash
 swift run swiftcontext analyze
 swift run swiftcontext analyze --project /path/to/project --output /path/to/output --format both
+swift run swiftcontext analyze --project /path/to/project --verbose
 ```
 
 `--format` options:

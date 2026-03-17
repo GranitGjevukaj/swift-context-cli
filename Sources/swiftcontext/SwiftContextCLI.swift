@@ -7,7 +7,7 @@ struct SwiftContextCLI: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "swiftcontext",
         abstract: "Generate AI agent context from Swift projects",
-        version: "0.4.0",
+        version: "0.5.0",
         subcommands: [Analyze.self, Graph.self, Preview.self, Export.self],
         defaultSubcommand: Analyze.self
     )
@@ -17,6 +17,8 @@ struct Analyze: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Analyze a Swift project and generate context manifest"
     )
+
+    @OptionGroup var global: GlobalCLIOptions
 
     @Option(name: .long, help: "Path to .xcodeproj or Package.swift directory")
     var project: String?
@@ -28,22 +30,33 @@ struct Analyze: ParsableCommand {
     var format: OutputFormatOption = .both
 
     func run() throws {
-        let options = AnalyzeOptions(
-            projectPath: project,
-            outputPath: output,
-            format: format.asOutputFormat
-        )
+        let runtime = try global.runtimeOptions()
 
-        let result = try SwiftContextAnalyzer().analyze(options: options)
-        for artifact in result.artifacts {
-            print("Wrote \(artifact.path)")
+        try runWithErrorHandling {
+            let options = AnalyzeOptions(
+                projectPath: project,
+                outputPath: output,
+                format: format.asOutputFormat,
+                runtime: runtime
+            )
+
+            let result = try SwiftContextAnalyzer().analyze(options: options)
+            guard runtime.logLevel != .quiet else {
+                return
+            }
+
+            for artifact in result.artifacts {
+                print("Wrote \(artifact.path)")
+            }
+            print("Analyzed \(result.manifest.modules.count) module(s).")
         }
-        print("Analyzed \(result.manifest.modules.count) module(s).")
     }
 }
 
 struct Graph: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Generate project graph output")
+
+    @OptionGroup var global: GlobalCLIOptions
 
     @Option(name: .long, help: "Path to .xcodeproj or Package.swift directory")
     var project: String?
@@ -55,17 +68,24 @@ struct Graph: ParsableCommand {
     var format: GraphFormatOption = .json
 
     func run() throws {
-        let output = try SwiftContextAnalyzer().graph(
-            projectPath: project,
-            type: type.asGraphType,
-            format: format.asGraphFormat
-        )
-        print(output, terminator: "")
+        let runtime = try global.runtimeOptions()
+
+        try runWithErrorHandling {
+            let output = try SwiftContextAnalyzer().graph(
+                projectPath: project,
+                type: type.asGraphType,
+                format: format.asGraphFormat,
+                runtime: runtime
+            )
+            print(output, terminator: "")
+        }
     }
 }
 
 struct Preview: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Preview context for a specific module")
+
+    @OptionGroup var global: GlobalCLIOptions
 
     @Option(name: .long, help: "Path to .xcodeproj or Package.swift directory")
     var project: String?
@@ -77,17 +97,24 @@ struct Preview: ParsableCommand {
     var format: PreviewFormatOption = .markdown
 
     func run() throws {
-        let output = try SwiftContextAnalyzer().preview(
-            projectPath: project,
-            moduleName: moduleName,
-            format: format.asPreviewFormat
-        )
-        print(output, terminator: "")
+        let runtime = try global.runtimeOptions()
+
+        try runWithErrorHandling {
+            let output = try SwiftContextAnalyzer().preview(
+                projectPath: project,
+                moduleName: moduleName,
+                format: format.asPreviewFormat,
+                runtime: runtime
+            )
+            print(output, terminator: "")
+        }
     }
 }
 
 struct Export: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Export context for agent-specific formats")
+
+    @OptionGroup var global: GlobalCLIOptions
 
     @Option(name: .long, help: "Path to .xcodeproj or Package.swift directory")
     var project: String?
@@ -99,21 +126,83 @@ struct Export: ParsableCommand {
     var output: String?
 
     func run() throws {
-        let content = try SwiftContextAnalyzer().export(
-            projectPath: project,
-            format: format.asExportFormat
-        )
+        let runtime = try global.runtimeOptions()
 
-        if let output {
-            let url = URL(fileURLWithPath: output)
-            let directory = url.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try content.write(to: url, atomically: true, encoding: .utf8)
-            print("Wrote \(url.path)")
-        } else {
-            print(content, terminator: "")
+        try runWithErrorHandling {
+            let content = try SwiftContextAnalyzer().export(
+                projectPath: project,
+                format: format.asExportFormat,
+                runtime: runtime
+            )
+
+            if let output {
+                let url = URL(fileURLWithPath: output)
+                let directory = url.deletingLastPathComponent()
+                do {
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    try content.write(to: url, atomically: true, encoding: .utf8)
+                } catch {
+                    throw SwiftContextError.outputWriteFailed(path: url.path, underlying: error)
+                }
+
+                if runtime.logLevel != .quiet {
+                    print("Wrote \(url.path)")
+                }
+            } else {
+                print(content, terminator: "")
+            }
         }
     }
+}
+
+struct GlobalCLIOptions: ParsableArguments {
+    @Flag(name: .long, help: "Enable verbose diagnostics")
+    var verbose = false
+
+    @Flag(name: .long, help: "Suppress non-error output")
+    var quiet = false
+
+    @Option(name: .long, help: "Path to .swiftcontext.yml config file")
+    var config: String?
+
+    func runtimeOptions() throws -> RuntimeOptions {
+        if verbose && quiet {
+            throw SwiftContextError.invalidLogLevelConfiguration
+        }
+
+        let level: LogLevel
+        if quiet {
+            level = .quiet
+        } else if verbose {
+            level = .verbose
+        } else {
+            level = .normal
+        }
+
+        return RuntimeOptions(logLevel: level, configPath: config)
+    }
+}
+
+private func runWithErrorHandling(_ operation: () throws -> Void) throws {
+    do {
+        try operation()
+    } catch {
+        writeError(error)
+        throw ExitCode.failure
+    }
+}
+
+private func writeError(_ error: Error) {
+    let description = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    let suggestion = (error as? LocalizedError)?.recoverySuggestion
+
+    var lines = ["Error: \(description)"]
+    if let suggestion, !suggestion.isEmpty {
+        lines.append("Hint: \(suggestion)")
+    }
+
+    let message = lines.joined(separator: "\n") + "\n"
+    FileHandle.standardError.write(Data(message.utf8))
 }
 
 enum OutputFormatOption: String, CaseIterable, ExpressibleByArgument {

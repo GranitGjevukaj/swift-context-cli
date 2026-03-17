@@ -1,0 +1,12 @@
+conventions:
+  viewModelSuffix: ViewModel
+  coordinatorSuffix: Coordinator
+  testSuffix: Tests
+  mockPrefix: Mock
+
+analysis:
+  parallelism: auto
+
+moduleOverrides:
+  AppCore:
+    viewModelSuffix: VM

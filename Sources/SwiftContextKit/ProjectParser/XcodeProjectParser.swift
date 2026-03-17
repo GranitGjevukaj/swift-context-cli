@@ -5,7 +5,12 @@ public enum XcodeProjectParser {
     public static func parse(projectFile: URL) throws -> ProjectModel {
         let root = projectFile.deletingLastPathComponent()
         let projectName = projectFile.deletingPathExtension().lastPathComponent
-        let xcodeProj = try XcodeProj(pathString: projectFile.path)
+        let xcodeProj: XcodeProj
+        do {
+            xcodeProj = try XcodeProj(pathString: projectFile.path)
+        } catch {
+            throw SwiftContextError.fileReadFailed(path: projectFile.path, underlying: error)
+        }
         let pbxproj = xcodeProj.pbxproj
 
         let sourceRoot = root.path

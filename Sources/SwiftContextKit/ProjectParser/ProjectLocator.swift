@@ -2,8 +2,25 @@ import Foundation
 
 public enum ProjectLocator {
     public static func resolve(from inputPath: String?) throws -> ProjectModel {
-        let root = URL(fileURLWithPath: inputPath ?? FileManager.default.currentDirectoryPath)
-            .standardizedFileURL
+        let root = URL(fileURLWithPath: inputPath ?? FileManager.default.currentDirectoryPath).standardizedFileURL
+        guard FileManager.default.fileExists(atPath: root.path) else {
+            throw SwiftContextError.pathDoesNotExist(path: root.path)
+        }
+
+        var isDirectory: ObjCBool = false
+        _ = FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory)
+
+        if !isDirectory.boolValue {
+            if root.pathExtension == "xcodeproj" {
+                return try XcodeProjectParser.parse(projectFile: root)
+            }
+
+            if root.lastPathComponent == "Package.swift" {
+                return try SPMManifestParser.parse(projectRoot: root.deletingLastPathComponent())
+            }
+
+            throw SwiftContextError.projectNotFound(path: root.path)
+        }
 
         if let xcodeproj = try firstFile(endingWith: ".xcodeproj", in: root) {
             return try XcodeProjectParser.parse(projectFile: xcodeproj)
