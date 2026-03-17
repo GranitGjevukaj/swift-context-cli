@@ -46,7 +46,7 @@ struct Analyze: ParsableCommand {
             }
 
             for artifact in result.artifacts {
-                print("Wrote \(artifact.path)")
+                print("Wrote \(renderFileLocation(artifact.path))")
             }
             print("Analyzed \(result.manifest.modules.count) module(s).")
         }
@@ -146,7 +146,7 @@ struct Export: ParsableCommand {
                 }
 
                 if runtime.logLevel != .quiet {
-                    print("Wrote \(url.path)")
+                    print("Wrote \(renderFileLocation(url.path))")
                 }
             } else {
                 print(content, terminator: "")
@@ -203,6 +203,11 @@ private func writeError(_ error: Error) {
 
     let message = lines.joined(separator: "\n") + "\n"
     FileHandle.standardError.write(Data(message.utf8))
+}
+
+private func renderFileLocation(_ path: String) -> String {
+    let url = URL(fileURLWithPath: path).standardizedFileURL.absoluteString
+    return "\(path) (\(url))"
 }
 
 enum OutputFormatOption: String, CaseIterable, ExpressibleByArgument {
