@@ -1,110 +1,88 @@
+import ArgumentParser
 import Foundation
 import SwiftContextKit
 
-enum CLIError: Error, CustomStringConvertible {
-    case invalidArguments(String)
-    case unsupportedSubcommand(String)
-
-    var description: String {
-        switch self {
-        case .invalidArguments(let message):
-            return message
-        case .unsupportedSubcommand(let command):
-            return "Subcommand '\(command)' is not implemented yet. Use 'analyze'."
-        }
-    }
+@main
+struct SwiftContextCLI: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "swiftcontext",
+        abstract: "Generate AI agent context from Swift projects",
+        version: "0.1.0",
+        subcommands: [Analyze.self, Graph.self, Preview.self, Export.self],
+        defaultSubcommand: Analyze.self
+    )
 }
 
-@main
-struct SwiftContextCLI {
-    static func main() {
-        do {
-            try run(arguments: Array(CommandLine.arguments.dropFirst()))
-        } catch {
-            fputs("error: \(error)\n", stderr)
-            exit(1)
-        }
-    }
+struct Analyze: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Analyze a Swift project and generate context manifest"
+    )
 
-    private static func run(arguments: [String]) throws {
-        if arguments.isEmpty {
-            try runAnalyze(arguments: [])
-            return
-        }
+    @Option(name: .long, help: "Path to .xcodeproj or Package.swift directory")
+    var project: String?
 
-        if arguments.contains("--version") || arguments.contains("-v") {
-            print("swiftcontext 0.1.0")
-            return
-        }
+    @Option(name: .long, help: "Output directory")
+    var output: String?
 
-        let subcommand = arguments.first ?? "analyze"
-        switch subcommand {
-        case "analyze":
-            try runAnalyze(arguments: Array(arguments.dropFirst()))
-        case "graph", "preview", "export":
-            throw CLIError.unsupportedSubcommand(subcommand)
-        default:
-            throw CLIError.invalidArguments(usage)
-        }
-    }
+    @Option(name: .long, help: "Output format: json, markdown, both")
+    var format: OutputFormatOption = .both
 
-    private static func runAnalyze(arguments: [String]) throws {
-        var projectPath: String?
-        var outputPath: String?
-        var format: OutputFormat = .both
-
-        var index = 0
-        while index < arguments.count {
-            let arg = arguments[index]
-            switch arg {
-            case "--project":
-                index += 1
-                guard index < arguments.count else { throw CLIError.invalidArguments("Missing value for --project") }
-                projectPath = arguments[index]
-            case "--output":
-                index += 1
-                guard index < arguments.count else { throw CLIError.invalidArguments("Missing value for --output") }
-                outputPath = arguments[index]
-            case "--format":
-                index += 1
-                guard index < arguments.count else { throw CLIError.invalidArguments("Missing value for --format") }
-                guard let parsed = OutputFormat(rawValue: arguments[index]) else {
-                    throw CLIError.invalidArguments("Invalid --format value '\(arguments[index])'. Use json, markdown, or both.")
-                }
-                format = parsed
-            case "--help", "-h":
-                print(usage)
-                return
-            default:
-                throw CLIError.invalidArguments("Unknown argument '\(arg)'.\n\n\(usage)")
-            }
-            index += 1
-        }
-
+    func run() throws {
         let options = AnalyzeOptions(
-            projectPath: projectPath,
-            outputPath: outputPath,
-            format: format
+            projectPath: project,
+            outputPath: output,
+            format: format.asOutputFormat
         )
-        let result = try SwiftContextAnalyzer().analyze(options: options)
 
+        let result = try SwiftContextAnalyzer().analyze(options: options)
         for artifact in result.artifacts {
             print("Wrote \(artifact.path)")
         }
         print("Analyzed \(result.manifest.modules.count) module(s).")
     }
+}
 
-    private static let usage = """
-    swiftcontext — Generate AI agent context from Swift projects
+struct Graph: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Generate project graph output")
 
-    Usage:
-      swiftcontext analyze [--project <path>] [--output <path>] [--format <json|markdown|both>]
-      swiftcontext --version
+    func run() throws {
+        throw ValidationError("The 'graph' subcommand is not implemented yet.")
+    }
+}
 
-    Defaults:
-      subcommand: analyze
-      --project: current directory (auto-detects .xcodeproj or Package.swift)
-      --output: current directory
-      --format: both
-    """
+struct Preview: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Preview context for a specific module")
+
+    @Argument(help: "Module name")
+    var moduleName: String
+
+    func run() throws {
+        _ = moduleName
+        throw ValidationError("The 'preview' subcommand is not implemented yet.")
+    }
+}
+
+struct Export: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Export context for agent-specific formats")
+
+    func run() throws {
+        throw ValidationError("The 'export' subcommand is not implemented yet.")
+    }
+}
+
+enum OutputFormatOption: String, CaseIterable, ExpressibleByArgument {
+    case json
+    case markdown
+    case both
+
+    var asOutputFormat: OutputFormat {
+        switch self {
+        case .json:
+            return .json
+        case .markdown:
+            return .markdown
+        case .both:
+            return .both
+        }
+    }
 }

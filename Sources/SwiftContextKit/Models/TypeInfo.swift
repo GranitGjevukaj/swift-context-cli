@@ -13,6 +13,8 @@ public struct TypeInfo: Codable, Sendable {
     public let kind: TypeKind
     public let accessLevel: String?
     public let conformances: [String]
+    public let properties: [PropertyInfo]
+    public let methods: [MethodInfo]
     public let filePath: String
 
     public init(
@@ -20,12 +22,16 @@ public struct TypeInfo: Codable, Sendable {
         kind: TypeKind,
         accessLevel: String?,
         conformances: [String],
+        properties: [PropertyInfo] = [],
+        methods: [MethodInfo] = [],
         filePath: String
     ) {
         self.name = name
         self.kind = kind
         self.accessLevel = accessLevel
         self.conformances = conformances
+        self.properties = properties
+        self.methods = methods
         self.filePath = filePath
     }
 }

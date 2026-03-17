@@ -2,6 +2,9 @@ import Foundation
 
 public enum SPMManifestParser {
     public static func parse(projectRoot: URL) throws -> ProjectModel {
+        // TODO(v0.2): Parse Package.swift target declarations directly to support
+        // custom target paths and platform/deployment settings.
+        // Current implementation follows conventional Sources/ and Tests/ layout.
         let sourcesURL = projectRoot.appendingPathComponent("Sources")
         let testsURL = projectRoot.appendingPathComponent("Tests")
 

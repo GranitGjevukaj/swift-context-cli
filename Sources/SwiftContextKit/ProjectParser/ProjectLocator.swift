@@ -14,19 +14,20 @@ public enum ProjectLocator {
             return try SPMManifestParser.parse(projectRoot: root)
         }
 
-        throw NSError(
-            domain: "SwiftContextKit.ProjectLocator",
-            code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "Could not find a .xcodeproj or Package.swift at \(root.path)"]
-        )
+        throw SwiftContextError.projectNotFound(path: root.path)
     }
 
     private static func firstFile(endingWith suffix: String, in directory: URL) throws -> URL? {
-        let contents = try FileManager.default.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )
+        let contents: [URL]
+        do {
+            contents = try FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            throw SwiftContextError.directoryListingFailed(path: directory.path, underlying: error)
+        }
         return contents.first(where: { $0.lastPathComponent.hasSuffix(suffix) })
     }
 }

@@ -6,7 +6,7 @@ struct EmitterTests {
     @Test
     func emitsMarkdownAndJSON() throws {
         let manifest = ContextManifest(
-            version: "0.1.0",
+            version: "0.2.0",
             project: ProjectOverview(
                 name: "Demo",
                 kind: "spm",
@@ -25,9 +25,36 @@ struct EmitterTests {
                             kind: .struct,
                             accessLevel: "public",
                             conformances: ["Codable"],
+                            properties: [
+                                PropertyInfo(
+                                    name: "value",
+                                    typeName: "Int",
+                                    accessLevel: "public",
+                                    wrappers: []
+                                )
+                            ],
+                            methods: [
+                                MethodInfo(
+                                    name: "load",
+                                    parameters: [],
+                                    returnType: "Int",
+                                    isAsync: false,
+                                    isThrowing: false,
+                                    accessLevel: "public"
+                                )
+                            ],
                             filePath: "/tmp/Demo/Sources/Core/Thing.swift"
                         )
                     ]
+                )
+            ],
+            viewBindings: [
+                ViewBinding(
+                    module: "Core",
+                    viewType: "HomeView",
+                    viewModelType: "HomeViewModel",
+                    wrapper: "StateObject",
+                    publishedProperties: ["title"]
                 )
             ]
         )
@@ -35,9 +62,12 @@ struct EmitterTests {
         let markdown = MarkdownEmitter.emit(manifest: manifest)
         #expect(markdown.contains("# Project Context: Demo"))
         #expect(markdown.contains("### Core"))
+        #expect(markdown.contains("## View ↔ ViewModel Bindings"))
+        #expect(markdown.contains("HomeView"))
 
         let json = try JSONEmitter.emit(manifest: manifest)
-        #expect(json.contains("\"version\" : \"0.1.0\""))
+        #expect(json.contains("\"version\" : \"0.2.0\""))
         #expect(json.contains("\"name\" : \"Thing\""))
+        #expect(json.contains("\"viewBindings\""))
     }
 }

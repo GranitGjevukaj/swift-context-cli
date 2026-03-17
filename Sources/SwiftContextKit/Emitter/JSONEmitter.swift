@@ -6,11 +6,7 @@ public enum JSONEmitter {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(manifest)
         guard let json = String(data: data, encoding: .utf8) else {
-            throw NSError(
-                domain: "SwiftContextKit.JSONEmitter",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to encode manifest as UTF-8"]
-            )
+            throw SwiftContextError.jsonEncodingFailed
         }
         return json + "\n"
     }

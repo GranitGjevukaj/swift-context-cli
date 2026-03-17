@@ -60,9 +60,10 @@ public struct SwiftContextAnalyzer: Sendable {
             )
         }
 
+        let viewBindings = ViewBindingGraphBuilder.build(modules: modules)
         let timestamp = ISO8601DateFormatter().string(from: Date())
         let manifest = ContextManifest(
-            version: "0.1.0",
+            version: "0.2.0",
             project: ProjectOverview(
                 name: project.name,
                 kind: project.kind.rawValue,
@@ -70,7 +71,8 @@ public struct SwiftContextAnalyzer: Sendable {
                 minimumDeploymentTarget: project.minimumDeploymentTarget,
                 generatedAt: timestamp
             ),
-            modules: modules
+            modules: modules,
+            viewBindings: viewBindings
         )
 
         let outputDirectory = URL(fileURLWithPath: options.outputPath ?? FileManager.default.currentDirectoryPath)

@@ -26,10 +26,12 @@ public struct ContextManifest: Codable, Sendable {
     public let version: String
     public let project: ProjectOverview
     public let modules: [ModuleInfo]
+    public let viewBindings: [ViewBinding]
 
-    public init(version: String, project: ProjectOverview, modules: [ModuleInfo]) {
+    public init(version: String, project: ProjectOverview, modules: [ModuleInfo], viewBindings: [ViewBinding] = []) {
         self.version = version
         self.project = project
         self.modules = modules
+        self.viewBindings = viewBindings
     }
 }
