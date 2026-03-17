@@ -7,7 +7,7 @@ struct SwiftContextCLI: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "swiftcontext",
         abstract: "Generate AI agent context from Swift projects",
-        version: "0.3.0",
+        version: "0.4.0",
         subcommands: [Analyze.self, Graph.self, Preview.self, Export.self],
         defaultSubcommand: Analyze.self
     )
@@ -67,20 +67,52 @@ struct Graph: ParsableCommand {
 struct Preview: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Preview context for a specific module")
 
+    @Option(name: .long, help: "Path to .xcodeproj or Package.swift directory")
+    var project: String?
+
     @Argument(help: "Module name")
     var moduleName: String
 
+    @Option(name: .long, help: "Preview format: markdown, json")
+    var format: PreviewFormatOption = .markdown
+
     func run() throws {
-        _ = moduleName
-        throw ValidationError("The 'preview' subcommand is not implemented yet.")
+        let output = try SwiftContextAnalyzer().preview(
+            projectPath: project,
+            moduleName: moduleName,
+            format: format.asPreviewFormat
+        )
+        print(output, terminator: "")
     }
 }
 
 struct Export: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Export context for agent-specific formats")
 
+    @Option(name: .long, help: "Path to .xcodeproj or Package.swift directory")
+    var project: String?
+
+    @Option(name: .long, help: "Export format: agents-md, claude-md, cursorrules")
+    var format: ExportFormatOption = .agentsMD
+
+    @Option(name: .long, help: "Optional output file path. Prints to stdout when omitted.")
+    var output: String?
+
     func run() throws {
-        throw ValidationError("The 'export' subcommand is not implemented yet.")
+        let content = try SwiftContextAnalyzer().export(
+            projectPath: project,
+            format: format.asExportFormat
+        )
+
+        if let output {
+            let url = URL(fileURLWithPath: output)
+            let directory = url.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try content.write(to: url, atomically: true, encoding: .utf8)
+            print("Wrote \(url.path)")
+        } else {
+            print(content, terminator: "")
+        }
     }
 }
 
@@ -128,6 +160,37 @@ enum GraphFormatOption: String, CaseIterable, ExpressibleByArgument {
             return .json
         case .mermaid:
             return .mermaid
+        }
+    }
+}
+
+enum PreviewFormatOption: String, CaseIterable, ExpressibleByArgument {
+    case markdown
+    case json
+
+    var asPreviewFormat: PreviewFormat {
+        switch self {
+        case .markdown:
+            return .markdown
+        case .json:
+            return .json
+        }
+    }
+}
+
+enum ExportFormatOption: String, CaseIterable, ExpressibleByArgument {
+    case agentsMD = "agents-md"
+    case claudeMD = "claude-md"
+    case cursorRules = "cursorrules"
+
+    var asExportFormat: ExportFormat {
+        switch self {
+        case .agentsMD:
+            return .agentsMD
+        case .claudeMD:
+            return .claudeMD
+        case .cursorRules:
+            return .cursorRules
         }
     }
 }

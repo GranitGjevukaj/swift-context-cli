@@ -17,6 +17,11 @@ public enum GraphFormat: String, Sendable {
     case mermaid
 }
 
+public enum PreviewFormat: String, Sendable {
+    case markdown
+    case json
+}
+
 public struct AnalyzeOptions: Sendable {
     public let projectPath: String?
     public let outputPath: String?
@@ -104,8 +109,49 @@ public struct SwiftContextAnalyzer: Sendable {
         }
     }
 
+    public func preview(projectPath: String?, moduleName: String, format: PreviewFormat) throws -> String {
+        let manifest = try buildManifest(projectPath: projectPath)
+        guard let module = manifest.modules.first(where: { $0.name == moduleName }) else {
+            throw SwiftContextError.moduleNotFound(name: moduleName)
+        }
+
+        let modulePattern = manifest.patterns.first(where: { $0.module == moduleName })
+        let moduleConvention = manifest.conventions.first(where: { $0.module == moduleName })
+        let moduleBindings = manifest.viewBindings.filter { $0.module == moduleName }
+        let moduleCoverage = manifest.testCoverage.first(where: { $0.module == moduleName })
+        let moduleCoordinators = manifest.navigationGraph.coordinators.filter { $0.module == moduleName }
+        let moduleViewSurfaces = manifest.navigationGraph.viewSurfaces.filter { $0.module == moduleName }
+        let moduleDependencies = manifest.dependencyGraph.edges.filter { $0.module == moduleName }
+
+        let preview = ModulePreview(
+            module: module,
+            pattern: modulePattern,
+            convention: moduleConvention,
+            viewBindings: moduleBindings,
+            coordinators: moduleCoordinators,
+            viewSurfaces: moduleViewSurfaces,
+            dependencies: moduleDependencies,
+            coverage: moduleCoverage
+        )
+
+        switch format {
+        case .json:
+            return try encodeJSON(preview)
+        case .markdown:
+            return renderPreviewMarkdown(preview)
+        }
+    }
+
+    public func export(projectPath: String?, format: ExportFormat) throws -> String {
+        let manifest = try buildManifest(projectPath: projectPath)
+        return ExportEmitter.emit(manifest: manifest, format: format)
+    }
+
     public func buildManifest(projectPath: String?) throws -> ContextManifest {
         let project = try ProjectLocator.resolve(from: projectPath)
+        let targetSourceFilesByModule = Dictionary(
+            uniqueKeysWithValues: project.targets.map { ($0.name, $0.sourceFiles) }
+        )
 
         let modules: [ModuleInfo] = try project.targets.map { target in
             var collectedImports: Set<String> = []
@@ -128,10 +174,20 @@ public struct SwiftContextAnalyzer: Sendable {
         let viewBindings = ViewBindingGraphBuilder.build(modules: modules)
         let navigationGraph = NavigationGraphBuilder.build(modules: modules)
         let dependencyGraph = DependencyGraphBuilder.build(modules: modules)
+        let patterns = ArchitecturePatternDetector.detect(
+            modules: modules,
+            viewBindings: viewBindings,
+            navigationGraph: navigationGraph
+        )
+        let conventions = ConventionInferenceEngine.infer(modules: modules)
+        let testCoverage = TestCoverageAnalyzer.analyze(
+            targetSourceFilesByModule: targetSourceFilesByModule,
+            modules: modules
+        )
 
         let timestamp = ISO8601DateFormatter().string(from: Date())
         return ContextManifest(
-            version: "0.3.0",
+            version: "0.4.0",
             project: ProjectOverview(
                 name: project.name,
                 kind: project.kind.rawValue,
@@ -142,7 +198,10 @@ public struct SwiftContextAnalyzer: Sendable {
             modules: modules,
             viewBindings: viewBindings,
             navigationGraph: navigationGraph,
-            dependencyGraph: dependencyGraph
+            dependencyGraph: dependencyGraph,
+            patterns: patterns,
+            conventions: conventions,
+            testCoverage: testCoverage
         )
     }
 
@@ -155,4 +214,82 @@ public struct SwiftContextAnalyzer: Sendable {
         }
         return output + "\n"
     }
+
+    private func renderPreviewMarkdown(_ preview: ModulePreview) -> String {
+        var lines: [String] = []
+        lines.append("# Module Preview: \(preview.module.name)")
+        lines.append("")
+        lines.append("- Source files: \(preview.module.sourceFileCount)")
+        lines.append("- Imports: \(preview.module.imports.isEmpty ? "none" : preview.module.imports.joined(separator: ", "))")
+
+        if let pattern = preview.pattern {
+            lines.append("- Pattern: \(pattern.pattern.rawValue) (confidence \(String(format: "%.2f", pattern.confidence)))")
+        }
+
+        if let convention = preview.convention {
+            var naming: [String] = []
+            if let vm = convention.naming.viewModelSuffix { naming.append("ViewModel: \(vm)") }
+            if let coord = convention.naming.coordinatorSuffix { naming.append("Coordinator: \(coord)") }
+            if let test = convention.naming.testSuffix { naming.append("Test: \(test)") }
+            if let mock = convention.naming.mockPrefix { naming.append("Mock: \(mock)") }
+            if !naming.isEmpty {
+                lines.append("- Naming: \(naming.joined(separator: ", "))")
+            }
+        }
+
+        lines.append("")
+        lines.append("## Bindings")
+        if preview.viewBindings.isEmpty {
+            lines.append("No view bindings detected.")
+        } else {
+            for binding in preview.viewBindings {
+                lines.append("- \(binding.viewType) ← \(binding.viewModelType) via @\(binding.wrapper)")
+            }
+        }
+
+        lines.append("")
+        lines.append("## Navigation")
+        if preview.coordinators.isEmpty, preview.viewSurfaces.isEmpty {
+            lines.append("No navigation signals detected.")
+        } else {
+            for coordinator in preview.coordinators {
+                lines.append("- Coordinator: \(coordinator.name)")
+            }
+            for surface in preview.viewSurfaces {
+                lines.append("- View: \(surface.viewType) uses \(surface.apis.joined(separator: ", "))")
+            }
+        }
+
+        lines.append("")
+        lines.append("## Dependencies")
+        if preview.dependencies.isEmpty {
+            lines.append("No protocol-to-concrete mappings detected.")
+        } else {
+            for edge in preview.dependencies {
+                lines.append("- \(edge.protocolType) → \(edge.concreteType)")
+            }
+        }
+
+        lines.append("")
+        lines.append("## Test Coverage")
+        if let coverage = preview.coverage {
+            lines.append("- Tested types: \(coverage.testedTypes.isEmpty ? "none" : coverage.testedTypes.joined(separator: ", "))")
+            lines.append("- Untested types: \(coverage.untestedTypes.isEmpty ? "none" : coverage.untestedTypes.joined(separator: ", "))")
+        } else {
+            lines.append("No test coverage data detected for this module.")
+        }
+
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
+    }
+}
+
+private struct ModulePreview: Codable {
+    let module: ModuleInfo
+    let pattern: ModulePattern?
+    let convention: ModuleConvention?
+    let viewBindings: [ViewBinding]
+    let coordinators: [CoordinatorInfo]
+    let viewSurfaces: [ViewNavigationSurface]
+    let dependencies: [DependencyEdge]
+    let coverage: ModuleTestCoverage?
 }

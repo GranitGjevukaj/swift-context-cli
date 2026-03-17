@@ -6,7 +6,7 @@ struct EmitterTests {
     @Test
     func emitsMarkdownAndJSON() throws {
         let manifest = ContextManifest(
-            version: "0.2.0",
+            version: "0.4.0",
             project: ProjectOverview(
                 name: "Demo",
                 kind: "spm",
@@ -63,11 +63,15 @@ struct EmitterTests {
         #expect(markdown.contains("# Project Context: Demo"))
         #expect(markdown.contains("### Core"))
         #expect(markdown.contains("## View ↔ ViewModel Bindings"))
+        #expect(markdown.contains("## Architecture Patterns"))
+        #expect(markdown.contains("## Test Coverage Surface"))
         #expect(markdown.contains("HomeView"))
 
         let json = try JSONEmitter.emit(manifest: manifest)
-        #expect(json.contains("\"version\" : \"0.2.0\""))
+        #expect(json.contains("\"version\" : \"0.4.0\""))
         #expect(json.contains("\"name\" : \"Thing\""))
         #expect(json.contains("\"viewBindings\""))
+        #expect(json.contains("\"patterns\""))
+        #expect(json.contains("\"testCoverage\""))
     }
 }

@@ -29,6 +29,9 @@ public struct ContextManifest: Codable, Sendable {
     public let viewBindings: [ViewBinding]
     public let navigationGraph: NavigationGraph
     public let dependencyGraph: DependencyGraph
+    public let patterns: [ModulePattern]
+    public let conventions: [ModuleConvention]
+    public let testCoverage: [ModuleTestCoverage]
 
     public init(
         version: String,
@@ -36,7 +39,10 @@ public struct ContextManifest: Codable, Sendable {
         modules: [ModuleInfo],
         viewBindings: [ViewBinding] = [],
         navigationGraph: NavigationGraph = .empty,
-        dependencyGraph: DependencyGraph = .empty
+        dependencyGraph: DependencyGraph = .empty,
+        patterns: [ModulePattern] = [],
+        conventions: [ModuleConvention] = [],
+        testCoverage: [ModuleTestCoverage] = []
     ) {
         self.version = version
         self.project = project
@@ -44,5 +50,8 @@ public struct ContextManifest: Codable, Sendable {
         self.viewBindings = viewBindings
         self.navigationGraph = navigationGraph
         self.dependencyGraph = dependencyGraph
+        self.patterns = patterns
+        self.conventions = conventions
+        self.testCoverage = testCoverage
     }
 }

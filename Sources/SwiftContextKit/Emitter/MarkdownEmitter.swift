@@ -87,6 +87,51 @@ public enum MarkdownEmitter {
             }
         }
 
+        lines.append("")
+        lines.append("## Architecture Patterns")
+        if manifest.patterns.isEmpty {
+            lines.append("No architecture pattern signals detected.")
+        } else {
+            for pattern in manifest.patterns.sorted(by: { $0.module < $1.module }) {
+                let confidence = String(format: "%.2f", pattern.confidence)
+                let reasons = pattern.reasons.isEmpty ? "none" : pattern.reasons.joined(separator: ", ")
+                lines.append("- [\(pattern.module)] \(pattern.pattern.rawValue) (confidence: \(confidence), reasons: \(reasons))")
+            }
+        }
+
+        lines.append("")
+        lines.append("## Conventions")
+        if manifest.conventions.isEmpty {
+            lines.append("No naming or organization conventions inferred.")
+        } else {
+            for convention in manifest.conventions.sorted(by: { $0.module < $1.module }) {
+                var namingParts: [String] = []
+                if let vm = convention.naming.viewModelSuffix { namingParts.append("ViewModel suffix '\(vm)'") }
+                if let coord = convention.naming.coordinatorSuffix { namingParts.append("Coordinator suffix '\(coord)'") }
+                if let test = convention.naming.testSuffix { namingParts.append("Test suffix '\(test)'") }
+                if let mock = convention.naming.mockPrefix { namingParts.append("Mock prefix '\(mock)'") }
+
+                let naming = namingParts.isEmpty ? "none" : namingParts.joined(separator: ", ")
+                let org = convention.fileOrganizationHints.isEmpty ? "none" : convention.fileOrganizationHints.joined(separator: ", ")
+                lines.append("- [\(convention.module)] naming: \(naming); organization: \(org)")
+            }
+        }
+
+        lines.append("")
+        lines.append("## Test Coverage Surface")
+        if manifest.testCoverage.isEmpty {
+            lines.append("No source modules available for coverage analysis.")
+        } else {
+            for coverage in manifest.testCoverage.sorted(by: { $0.module < $1.module }) {
+                lines.append("### \(coverage.module)")
+                lines.append("- Tested types: \(coverage.testedTypes.isEmpty ? "none" : coverage.testedTypes.joined(separator: ", "))")
+                lines.append("- Untested types: \(coverage.untestedTypes.isEmpty ? "none" : coverage.untestedTypes.joined(separator: ", "))")
+
+                let matchedCount = coverage.fileMatches.filter { $0.matchedTestFile != nil }.count
+                lines.append("- File matches: \(matchedCount)/\(coverage.fileMatches.count)")
+            }
+        }
+
         return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
     }
 
