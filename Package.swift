@@ -8,7 +8,9 @@ let package = Package(
         .executable(name: "swiftcontext", targets: ["swiftcontext"]),
         .library(name: "SwiftContextKit", targets: ["SwiftContextKit"]),
     ],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
+    ],
     targets: [
         .executableTarget(
             name: "swiftcontext",
@@ -16,7 +18,10 @@ let package = Package(
         ),
         .target(
             name: "SwiftContextKit",
-            dependencies: []
+            dependencies: [
+                .product(name: "SwiftSyntax", package: "swift-syntax"),
+                .product(name: "SwiftParser", package: "swift-syntax"),
+            ]
         ),
         .testTarget(
             name: "SwiftContextKitTests",
