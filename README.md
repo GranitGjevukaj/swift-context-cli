@@ -52,7 +52,8 @@ swift build -c release
 Prerequisite: Xcode 16 or newer command line tools are required because the formula builds the CLI from source.
 
 ```bash
-brew install --HEAD --formula https://raw.githubusercontent.com/GranitGjevukaj/swift-context-cli/main/Formula/swiftcontext.rb
+brew tap granitgjevukaj/swift-context-cli https://github.com/GranitGjevukaj/swift-context-cli.git
+brew install --HEAD granitgjevukaj/swift-context-cli/swiftcontext
 ```
 
 ## Build
