@@ -67,17 +67,20 @@ struct Graph: ParsableCommand {
     @Option(name: .long, help: "Output format: json, mermaid")
     var format: GraphFormatOption = .json
 
+    @Option(name: .long, help: "Optional output file path. Prints to stdout when omitted.")
+    var output: String?
+
     func run() throws {
         let runtime = try global.runtimeOptions()
 
         try runWithErrorHandling {
-            let output = try SwiftContextAnalyzer().graph(
+            let content = try SwiftContextAnalyzer().graph(
                 projectPath: project,
                 type: type.asGraphType,
                 format: format.asGraphFormat,
                 runtime: runtime
             )
-            print(output, terminator: "")
+            try writeCommandOutput(content, to: output, runtime: runtime)
         }
     }
 }
@@ -134,23 +137,7 @@ struct Export: ParsableCommand {
                 format: format.asExportFormat,
                 runtime: runtime
             )
-
-            if let output {
-                let url = URL(fileURLWithPath: output)
-                let directory = url.deletingLastPathComponent()
-                do {
-                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                    try content.write(to: url, atomically: true, encoding: .utf8)
-                } catch {
-                    throw SwiftContextError.outputWriteFailed(path: url.path, underlying: error)
-                }
-
-                if runtime.logLevel != .quiet {
-                    print("Wrote \(renderFileLocation(url.path))")
-                }
-            } else {
-                print(content, terminator: "")
-            }
+            try writeCommandOutput(content, to: output, runtime: runtime)
         }
     }
 }
@@ -203,6 +190,25 @@ private func writeError(_ error: Error) {
 
     let message = lines.joined(separator: "\n") + "\n"
     FileHandle.standardError.write(Data(message.utf8))
+}
+
+private func writeCommandOutput(_ content: String, to outputPath: String?, runtime: RuntimeOptions) throws {
+    if let outputPath {
+        let url = URL(fileURLWithPath: outputPath)
+        let directory = url.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try content.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            throw SwiftContextError.outputWriteFailed(path: url.path, underlying: error)
+        }
+
+        if runtime.logLevel != .quiet {
+            print("Wrote \(renderFileLocation(url.path))")
+        }
+    } else {
+        print(content, terminator: "")
+    }
 }
 
 private func renderFileLocation(_ path: String) -> String {
