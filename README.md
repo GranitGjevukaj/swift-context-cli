@@ -9,7 +9,7 @@ Running analysis produces two artifacts at your chosen output path:
 - `AGENTS.md` (human-readable, agent-friendly project context)
 - `.swiftcontext.json` (machine-readable manifest)
 
-## Current Capabilities (v0.5)
+## Current Capabilities (v0.6 foundation)
 
 - Project parsing:
   - Xcode projects (`.xcodeproj`) via `XcodeProj`
@@ -33,9 +33,11 @@ Running analysis produces two artifacts at your chosen output path:
   - Global `--verbose` and `--quiet` flags
 - Tooling and distribution:
   - CLI subcommands: `analyze`, `graph`, `preview`, `export`
+  - MCP server executable target: `swiftcontext-mcp` (stdio JSON-RPC with `initialize`, `tools/list`, `tools/call`)
+  - MCP tools: `get_module_structure`, `get_navigation_graph`, `get_view_bindings`, `get_type_info`
   - Homebrew formula in `Formula/swiftcontext.rb`
   - macOS CI workflow (`.github/workflows/swift.yml`)
-  - Release automation (`.github/workflows/release.yml`) for universal binary + GitHub release + formula update
+  - Release automation (`.github/workflows/release.yml`) for universal binary + GitHub release
 
 ## Install
 
@@ -45,10 +47,12 @@ Running analysis produces two artifacts at your chosen output path:
 swift build -c release
 ```
 
-### Homebrew (formula in this repo)
+### Homebrew (build from source)
+
+Prerequisite: Xcode 16 or newer command line tools are required because the formula builds the CLI from source.
 
 ```bash
-brew install --formula https://raw.githubusercontent.com/granitgjevukaj/swift-context-cli/main/Formula/swiftcontext.rb
+brew install --HEAD --formula https://raw.githubusercontent.com/GranitGjevukaj/swift-context-cli/main/Formula/swiftcontext.rb
 ```
 
 ## Build
@@ -56,6 +60,25 @@ brew install --formula https://raw.githubusercontent.com/granitgjevukaj/swift-co
 ```bash
 swift build
 ```
+
+## MCP Server
+
+Start the MCP server over stdio:
+
+```bash
+swift run swiftcontext-mcp
+```
+
+Supported MCP methods:
+- `initialize`
+- `tools/list`
+- `tools/call`
+
+Available tools:
+- `get_module_structure` (`projectPath?`, `moduleName?`)
+- `get_navigation_graph` (`projectPath?`)
+- `get_view_bindings` (`projectPath?`)
+- `get_type_info` (`projectPath?`, `typeName`, `moduleName?`)
 
 ## Global Flags
 
@@ -167,4 +190,5 @@ swift test
 ## Notes
 
 - `AGENTS.md` is generated output and should not be hand-edited.
+- Homebrew currently installs from the repository source rather than a prebuilt release tarball.
 - SPM parsing currently assumes standard target layout and will be expanded to parse `Package.swift` target paths directly in a future version.

@@ -7,7 +7,7 @@ struct SwiftContextCLI: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "swiftcontext",
         abstract: "Generate AI agent context from Swift projects",
-        version: "0.5.0",
+        version: "0.6.0",
         subcommands: [Analyze.self, Graph.self, Preview.self, Export.self],
         defaultSubcommand: Analyze.self
     )

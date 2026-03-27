@@ -242,7 +242,7 @@ public struct SwiftContextAnalyzer: Sendable {
 
         let timestamp = ISO8601DateFormatter().string(from: Date())
         return ContextManifest(
-            version: "0.5.0",
+            version: "0.6.0",
             project: ProjectOverview(
                 name: project.name,
                 kind: project.kind.rawValue,

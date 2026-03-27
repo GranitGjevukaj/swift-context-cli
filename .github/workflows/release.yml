@@ -75,28 +75,13 @@ jobs:
           echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Smoke test release binary
+        run: |
+          tar -xzf dist/swiftcontext-macos-universal.tar.gz -C dist
+          dist/swiftcontext --version
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/swiftcontext-macos-universal.tar.gz
-
-      - name: Update Homebrew formula on main
-        run: |
-          git fetch origin main
-          git checkout main
-          ./scripts/update_homebrew_formula.sh \
-            "${{ steps.package.outputs.version }}" \
-            "${{ steps.package.outputs.sha256 }}" \
-            "$GITHUB_REPOSITORY"
-
-          if git diff --quiet -- Formula/swiftcontext.rb; then
-            echo "Formula is already up to date"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/swiftcontext.rb
-          git commit -m "chore(homebrew): update formula for v${{ steps.package.outputs.version }}"
-          git push origin main
